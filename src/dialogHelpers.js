@@ -1,4 +1,5 @@
 import { AZ_CITIES } from './data';
+import zipcodes from 'zipcodes';
 
 const normalizeCityKey = (value) => String(value || '').toLowerCase().replace(/[^a-z]/g, '');
 
@@ -8,23 +9,21 @@ const AZ_CITY_INDEX = new Map(
         .map((item) => [normalizeCityKey(item.value || item.name), item])
 );
 
-const CA_CITY_REGION_LOOKUP = {
-    SC: new Set([
-        'sandiego', 'losangeles', 'anaheim', 'irvine', 'longbeach', 'santamonica', 'riverside',
-        'santaana', 'ontario', 'escondido', 'carlsbad', 'chulavista'
-    ]),
-    CC: new Set([
-        'fresno', 'bakersfield', 'visalia', 'modesto', 'stockton', 'merced', 'madera', 'tulare'
-    ]),
-    NC: new Set([
-        'sacramento', 'roseville', 'chico', 'redding', 'santarosa', 'oakland', 'sanfrancisco',
-        'sanjose', 'fremont', 'concord', 'vacaville', 'fairfield'
-    ]),
+const CC_ZIP_PREFIXES = new Set([
+    // Fresno / Kings / Tulare / Inyo / San Luis Obispo / Kern / Santa Barbara / Ventura
+    '930', '931', '932', '933', '934', '935', '936', '937', '938'
+]);
+
+const CA_CITY_REGION_FALLBACK = {
+    SC: new Set(['sandiego', 'losangeles', 'anaheim', 'irvine', 'longbeach', 'santaana', 'chulavista']),
+    NC: new Set(['sacramento', 'roseville', 'chico', 'redding', 'santarosa', 'oakland', 'sanfrancisco', 'sanjose']),
 };
+
+const CA_NORTH_LATITUDE_SPLIT = 37.35;
 
 const parseCityStateFromAddress = (addressText) => {
     const raw = String(addressText || '').trim();
-    if (!raw) return { city: '', state: '' };
+    if (!raw) return { city: '', state: '', zip: '' };
 
     const lines = raw
         .split(/\r?\n/)
@@ -37,13 +36,15 @@ const parseCityStateFromAddress = (addressText) => {
 
         const state = stateMatch[1].toUpperCase();
         const city = line.split(',')[0]?.trim() || '';
+        const zipMatch = line.match(/\b(\d{5})(?:-\d{4})?\b/);
+        const zip = zipMatch?.[1] || '';
 
         if (city) {
-            return { city, state };
+            return { city, state, zip };
         }
     }
 
-    return { city: '', state: '' };
+    return { city: '', state: '', zip: '' };
 };
 
 const getAzCityMetaFromCity = (city) => {
@@ -57,6 +58,7 @@ const inferRegionFromAddress = (addressText, cityObj) => {
     const parsed = parseCityStateFromAddress(addressText);
     const city = cityFromSelection || parsed.city;
     const state = parsed.state;
+    const zip = parsed.zip;
 
     const azCity = getAzCityMetaFromCity(city);
     if (state === 'AZ' || azCity) {
@@ -65,11 +67,21 @@ const inferRegionFromAddress = (addressText, cityObj) => {
     }
 
     if (state === 'CA') {
-        const key = normalizeCityKey(city);
+        if (zip) {
+            const zipPrefix = zip.slice(0, 3);
+            if (CC_ZIP_PREFIXES.has(zipPrefix)) {
+                return 'CC';
+            }
 
-        if (CA_CITY_REGION_LOOKUP.SC.has(key)) return 'SC';
-        if (CA_CITY_REGION_LOOKUP.CC.has(key)) return 'CC';
-        if (CA_CITY_REGION_LOOKUP.NC.has(key)) return 'NC';
+            const zipMeta = zipcodes.lookup(zip);
+            if (zipMeta && Number.isFinite(zipMeta.latitude)) {
+                return zipMeta.latitude >= CA_NORTH_LATITUDE_SPLIT ? 'NC' : 'SC';
+            }
+        }
+
+        const key = normalizeCityKey(city);
+        if (CA_CITY_REGION_FALLBACK.NC.has(key)) return 'NC';
+        if (CA_CITY_REGION_FALLBACK.SC.has(key)) return 'SC';
 
         return '';
     }
