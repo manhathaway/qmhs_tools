@@ -9,14 +9,6 @@ export const FORM_SCHEMA = [
         enabledWhen: (form) => form.new_customer
     },
     { id: 'salesman', label: 'Salesman', type: 'select', data: 'salesman' },
-    {
-        id: 'city',
-        label: 'City',
-        type: 'select',
-        data: 'city',
-        enabledWhen: (form, ctx) =>
-            ctx.selectedSalesman?.region === 'AZ'
-    },
     { id: 'contract_date', label: 'Contract Date', type: 'date' },
     { id: 'source', label: 'Source', type: 'select', data: 'source' },
     { id: 'job_name', label: 'Job Name', type: 'text' },

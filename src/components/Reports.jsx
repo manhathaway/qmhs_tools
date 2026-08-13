@@ -352,6 +352,37 @@ const getDateRangeDays = (startDate, endDate) => {
     return days;
 };
 
+const shiftDateByYears = (isoDate, yearOffset) => {
+    const normalized = normalizeDate(isoDate);
+    if (!normalized) return '';
+
+    const [year, month, day] = normalized.split('-').map(Number);
+    const shiftedYear = year + yearOffset;
+    const lastDayOfMonth = new Date(shiftedYear, month, 0).getDate();
+    const shiftedDay = Math.min(day, lastDayOfMonth);
+
+    return `${shiftedYear}-${String(month).padStart(2, '0')}-${String(shiftedDay).padStart(2, '0')}`;
+};
+
+const getYearComparisonRanges = (startDate, endDate, previousYears = 2) => {
+    const start = normalizeDate(startDate);
+    const end = normalizeDate(endDate || startDate);
+
+    if (!start || !end) {
+        return [];
+    }
+
+    return Array.from({ length: previousYears + 1 }, (_, index) => {
+        const offset = -index;
+
+        return {
+            year: Number(start.slice(0, 4)) + offset,
+            start: shiftDateByYears(start, offset),
+            end: shiftDateByYears(end, offset),
+        };
+    });
+};
+
 
 const createEmptySummary = () => ({
     writtenQty: 0,
@@ -451,7 +482,18 @@ export default function Reports() {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
     const [barGraphRows, setBarGraphRows] = useState([]);
+    const [companyYearComparison, setCompanyYearComparison] = useState([]);
     const [spreadsheetRows, setSpreadsheetRows] = useState([]);
+
+    const mapSaleRow = (item) => ({
+        id: getRowId(item),
+        customer: getCustomerName(item),
+        salesRep: getSalesRepName(item),
+        region: getAreaForItem(item),
+        saleDate: normalizeDate(item['Sale Date']) || normalizeDate(item['Appointment Date']),
+        amount: getSaleAmount(item),
+        isCancelled: isCancelledLead(item),
+    });
 
     const fetchPipelineItemsForDate = async (targetDate) => {
         const dateVariants = getDateVariants(targetDate);
@@ -556,15 +598,7 @@ export default function Reports() {
             const rows = pipelineItems
                 .filter((item) => isInRangeByAppointmentOrSaleDate(item, start, getExclusiveEndDate(end)))
                 .filter(isLikelySaleRecord)
-                .map((item) => ({
-                    id: getRowId(item),
-                    customer: getCustomerName(item),
-                    salesRep: getSalesRepName(item),
-                    region: getAreaForItem(item),
-                    saleDate: normalizeDate(item['Sale Date']) || normalizeDate(item['Appointment Date']),
-                    amount: getSaleAmount(item),
-                    isCancelled: isCancelledLead(item),
-                }))
+                .map(mapSaleRow)
                 .sort((a, b) => {
                     const dateA = a.saleDate || '';
                     const dateB = b.saleDate || '';
@@ -577,8 +611,44 @@ export default function Reports() {
                 });
 
             setBarGraphRows(rows);
+
+            if (activeSection === 'lineGraph' && compareMode === 'companyYear') {
+                const yearRanges = getYearComparisonRanges(start, end, 2);
+
+                const comparisonRows = await Promise.all(
+                    yearRanges.map(async (range) => {
+                        const rangeItems = await fetchPipelineItemsForRange(range.start, range.end);
+                        const rangeRows = rangeItems
+                            .filter((item) => isInRangeByAppointmentOrSaleDate(item, range.start, getExclusiveEndDate(range.end)))
+                            .filter(isLikelySaleRecord)
+                            .map(mapSaleRow)
+                            .sort((a, b) => {
+                                const dateA = a.saleDate || '';
+                                const dateB = b.saleDate || '';
+
+                                if (dateA !== dateB) {
+                                    return dateB.localeCompare(dateA);
+                                }
+
+                                return b.amount - a.amount;
+                            });
+
+                        return {
+                            year: String(range.year),
+                            startDate: range.start,
+                            endDate: range.end,
+                            rows: rangeRows,
+                        };
+                    })
+                );
+
+                setCompanyYearComparison(comparisonRows);
+            } else {
+                setCompanyYearComparison([]);
+            }
         } catch (fetchError) {
             setError(fetchError.message || 'Failed to load bar graph report');
+            setCompanyYearComparison([]);
         } finally {
             setLoading(false);
         }
@@ -698,6 +768,51 @@ export default function Reports() {
 
     const lineGraph = useMemo(() => {
         const days = getDateRangeDays(barGraphStartDate, barGraphEndDate || barGraphStartDate);
+        const palette = ['#2563eb', '#dc2626', '#059669', '#d97706', '#7c3aed', '#0891b2', '#db2777', '#65a30d', '#ea580c', '#475569'];
+
+        if (compareMode === 'companyYear') {
+            const series = companyYearComparison
+                .map((entry, index) => {
+                    const dailySales = new Map();
+                    entry.rows.forEach((row) => {
+                        if (!row.saleDate) return;
+                        dailySales.set(row.saleDate, (dailySales.get(row.saleDate) || 0) + row.amount);
+                    });
+
+                    const rangeDays = getDateRangeDays(entry.startDate, entry.endDate);
+                    let runningTotal = 0;
+                    const points = days.map((day, pointIndex) => {
+                        const actualDay = rangeDays[pointIndex] || '';
+                        runningTotal += actualDay ? (dailySales.get(actualDay) || 0) : 0;
+
+                        return {
+                            day,
+                            actualDay,
+                            value: runningTotal,
+                        };
+                    });
+
+                    return {
+                        label: entry.year,
+                        color: palette[index % palette.length],
+                        points,
+                        finalValue: runningTotal,
+                    };
+                })
+                .sort((a, b) => Number(b.label) - Number(a.label));
+
+            const maxValue = series.length
+                ? Math.max(...series.map((entry) => Math.max(...entry.points.map((point) => point.value), 0)))
+                : 0;
+
+            return {
+                days,
+                series,
+                maxValue,
+                title: 'Sales by Year',
+            };
+        }
+
         const groupedDailySales = new Map();
 
         barGraphRows.forEach((row) => {
@@ -714,7 +829,6 @@ export default function Reports() {
             dailySales.set(day, (dailySales.get(day) || 0) + row.amount);
         });
 
-        const palette = ['#2563eb', '#dc2626', '#059669', '#d97706', '#7c3aed', '#0891b2', '#db2777', '#65a30d', '#ea580c', '#475569'];
         const series = Array.from(groupedDailySales.entries())
             .map(([label, dailySales], index) => {
                 let runningTotal = 0;
@@ -745,7 +859,46 @@ export default function Reports() {
             maxValue,
             title: `Sales by ${compareMode === 'region' ? 'Region' : 'Salesman'}`,
         };
-    }, [barGraphRows, compareMode, barGraphStartDate, barGraphEndDate]);
+    }, [barGraphRows, compareMode, barGraphStartDate, barGraphEndDate, companyYearComparison]);
+
+    const companyYearSummary = useMemo(() => {
+        return companyYearComparison
+            .map((entry) => {
+                const summary = createEmptySummary();
+
+                entry.rows.forEach((row) => {
+                    summary.writtenQty += 1;
+                    summary.writtenAmount += row.amount;
+
+                    if (row.isCancelled) {
+                        summary.cancelledQty += 1;
+                        summary.cancelledAmount += row.amount;
+                    } else {
+                        summary.nonCancelledQty += 1;
+                        summary.nonCancelledAmount += row.amount;
+                    }
+                });
+
+                return {
+                    label: entry.year,
+                    salesQty: summary.writtenQty,
+                    salesAmount: summary.writtenAmount,
+                    nonCancelledQty: summary.nonCancelledQty,
+                    nonCancelledAmount: summary.nonCancelledAmount,
+                    cancelledQty: summary.cancelledQty,
+                    cancelledAmount: summary.cancelledAmount,
+                };
+            })
+            .sort((a, b) => Number(b.label) - Number(a.label));
+    }, [companyYearComparison]);
+
+    const handleSectionChange = (nextSection) => {
+        setActiveSection(nextSection);
+
+        if (nextSection === 'barGraph' && compareMode === 'companyYear') {
+            setCompareMode('salesman');
+        }
+    };
 
     const monthlyReport = useMemo(() => {
         const bySalesman = buildSummaryRows(spreadsheetRows, 'salesRep');
@@ -792,7 +945,7 @@ export default function Reports() {
                         <select
                             className={styles.graphTypeSelect}
                             value={activeSection}
-                            onChange={(event) => setActiveSection(event.target.value)}
+                            onChange={(event) => handleSectionChange(event.target.value)}
                             aria-label="Graph type"
                         >
                             <option value="barGraph">Bar Graph</option>
@@ -1079,7 +1232,7 @@ export default function Reports() {
                         <select
                             className={styles.graphTypeSelect}
                             value={activeSection}
-                            onChange={(event) => setActiveSection(event.target.value)}
+                            onChange={(event) => handleSectionChange(event.target.value)}
                             aria-label="Graph type"
                         >
                             <option value="barGraph">Bar Graph</option>
@@ -1112,6 +1265,7 @@ export default function Reports() {
                                 >
                                     <option value="salesman">Salesman</option>
                                     <option value="region">Region</option>
+                                    <option value="companyYear">Year</option>
                                 </select>
                             </label>
                             <button type="button" onClick={loadBarGraphReport} disabled={loading}>
@@ -1221,7 +1375,7 @@ export default function Reports() {
                                                                     r="3.5"
                                                                     fill={entry.color}
                                                                 >
-                                                                    <title>{`${entry.label} ${toUsDateShort(point.day)}: ${formatCurrency(point.value)}`}</title>
+                                                                    <title>{`${entry.label} ${toUsDateShort(point.actualDay || point.day)}: ${formatCurrency(point.value)}`}</title>
                                                                 </circle>
                                                             );
                                                         })}
@@ -1247,13 +1401,13 @@ export default function Reports() {
                                 )}
                             </div>
 
-                            {totals.repSeries.length > 0 && (
+                            {(compareMode === 'companyYear' ? companyYearSummary.length > 0 : totals.repSeries.length > 0) && (
                                 <div className={styles.repSummary}>
                                     <h4>Summary</h4>
                                     <table className={`${styles.repSummaryTable} ${styles.dailyRepSummaryTable}`}>
                                         <thead>
                                             <tr className={styles.groupHeaderRow}>
-                                                <th rowSpan="2">{totals.groupLabel}</th>
+                                                <th rowSpan="2">{compareMode === 'companyYear' ? 'Year' : totals.groupLabel}</th>
                                                 <th colSpan="2">Non-Cancelled</th>
                                                 <th colSpan="2">Cancelled</th>
                                                 <th colSpan="2">Total</th>
@@ -1268,7 +1422,7 @@ export default function Reports() {
                                             </tr>
                                         </thead>
                                         <tbody>
-                                            {totals.repSeries.map((entry) => {
+                                            {(compareMode === 'companyYear' ? companyYearSummary : totals.repSeries).map((entry) => {
                                                 return (
                                                     <tr key={entry.label}>
                                                         <td>{entry.label}</td>
@@ -1286,7 +1440,7 @@ export default function Reports() {
                                 </div>
                             )}
 
-                            {barGraphRows.length > 0 && (
+                            {compareMode !== 'companyYear' && barGraphRows.length > 0 && (
                                 <div className={styles.logCard}>
                                     <h4 className={styles.logTitle}>Sales Log</h4>
                                     <div className={styles.tableWrapper}>

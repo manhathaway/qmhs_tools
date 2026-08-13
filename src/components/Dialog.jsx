@@ -1,7 +1,7 @@
 import css from './Dialog.module.css';
 import { useMemo, useEffect } from 'react';
 import Button from './subcomponents/Button';
-import { SALESMEN, AZ_CITIES, SOURCES } from '../data.js';
+import { SALESMEN, SOURCES } from '../data.js';
 import { formatCurrency } from '../formHelpers.js';
 import {
     getClass,
@@ -45,7 +45,6 @@ const Dialog = ({ formData }) => {
 
     const selectedData = {
         salesman: getSelectedEntry(SALESMEN, formData.salesman),
-        city: getSelectedEntry(AZ_CITIES, formData.city),
         source: getSelectedEntry(SOURCES, formData.source)
     };
 
@@ -68,7 +67,7 @@ const Dialog = ({ formData }) => {
     };
 
     const estimateDetailsData = {
-        class: required(getClass(selectedData.salesman, selectedData.city)),
+        class: required(getClass(selectedData.salesman, null, formData.address)),
         contract_date: required(formattedFields.contract_date),
         salesman: required(selectedData.salesman && selectedData.salesman.value),
         source: required(getSource(selectedData.source)),
@@ -83,7 +82,7 @@ const Dialog = ({ formData }) => {
     }
 
     const excelRowData = {
-        Region: required(getRegion(selectedData.salesman)),
+        Region: required(getRegion(selectedData.salesman, null, formData.address)),
         Date: required(formattedFields.contract_date),
         Salesman: required(selectedData.salesman && selectedData.salesman.name),
         Customer: required(formData.name),

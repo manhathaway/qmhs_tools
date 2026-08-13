@@ -1,5 +1,5 @@
 import { buildInitialState, formatCurrency } from './formHelpers';
-import { FORM_SCHEMA, SALESMEN, SOURCES, DEPOSIT_TYPES, AZ_CITIES } from './data';
+import { FORM_SCHEMA, SALESMEN, SOURCES, DEPOSIT_TYPES } from './data';
 
 const TRANSFERABLE_STATUSES = ['Sale Won', 'Cancelled'];
 const ZERO_CURRENCY = '$0';
@@ -98,41 +98,6 @@ const getCityStateZipText = (lead) => {
     return '';
 };
 
-const mapAzCityFromLead = (lead, salesmanValue) => {
-    const salesman = SALESMEN.list.find((option) => option.value === salesmanValue);
-
-    if (!salesman || salesman.region !== 'AZ') {
-        return '';
-    }
-
-    const cityStateZip = String(getCityStateZipText(lead) || '').trim();
-    if (!cityStateZip) return '';
-
-    const beforeComma = cityStateZip.split(',')[0]?.trim() || '';
-    if (!beforeComma) return '';
-
-    const normalize = (value) => String(value || '').toLowerCase().trim();
-    const normalizedBeforeComma = normalize(beforeComma);
-
-    const exactMatch = AZ_CITIES.list.find((option) => {
-        const optionName = normalize(option.name);
-        const optionValue = normalize(option.value);
-        return optionName === normalizedBeforeComma || optionValue === normalizedBeforeComma;
-    });
-
-    if (exactMatch?.value) return exactMatch.value;
-
-    // Fallback: first word before comma when CRM city label is noisy.
-    const firstWord = normalizedBeforeComma.split(/\s+/)[0];
-    const firstWordMatch = AZ_CITIES.list.find((option) => {
-        const optionName = normalize(option.name);
-        const optionValue = normalize(option.value);
-        return optionName === firstWord || optionValue === firstWord;
-    });
-
-    return firstWordMatch?.value || '';
-};
-
 const formatContactNameFirstLast = (name) => {
     const normalized = String(name || '').trim();
 
@@ -192,7 +157,7 @@ const mapSalesman = (salesRep) => {
 
     if (rep.includes('sal')) return 'SalS';
     if (rep.includes('zac')) return 'Zac';
-    if (rep.includes('dom')) return rep.includes('az') ? 'DC' : 'Dom';
+    if (rep.includes('dom')) return 'Dom';
     if (rep.includes('dave')) return 'Dave';
     if (rep.includes('nick m')) return 'NickM';
     if (rep.includes('nick b')) return 'NB';
@@ -391,7 +356,6 @@ export const buildSaleEntryPrefill = (lead) => {
         job_description: descriptionOfWork || base.job_description,
         new_customer: shouldMarkAsNewCustomer(lead),
         salesman: mappedSalesman,
-        city: mapAzCityFromLead(lead, mappedSalesman),
         contract_date: normalizeDate(getContractDate(lead)),
         price: saleAmount ? formatCurrency(saleAmount) : '',
         deposit: normalizedDepositAmount,

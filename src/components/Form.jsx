@@ -3,9 +3,6 @@ import css from './Form.module.css';
 import {
     FORM_SCHEMA,
     SALESMEN,
-    SOURCES,
-    DEPOSIT_TYPES,
-    AZ_CITIES,
     SELECT_DATA
 } from '../data';
 import {

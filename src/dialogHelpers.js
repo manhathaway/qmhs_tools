@@ -1,6 +1,102 @@
-const getClass = (salesmanObj, cityObj) => {
+import { AZ_CITIES } from './data';
+
+const normalizeCityKey = (value) => String(value || '').toLowerCase().replace(/[^a-z]/g, '');
+
+const AZ_CITY_INDEX = new Map(
+    AZ_CITIES.list
+        .filter((item) => item?.value)
+        .map((item) => [normalizeCityKey(item.value || item.name), item])
+);
+
+const CA_CITY_REGION_LOOKUP = {
+    SC: new Set([
+        'sandiego', 'losangeles', 'anaheim', 'irvine', 'longbeach', 'santamonica', 'riverside',
+        'santaana', 'ontario', 'escondido', 'carlsbad', 'chulavista'
+    ]),
+    CC: new Set([
+        'fresno', 'bakersfield', 'visalia', 'modesto', 'stockton', 'merced', 'madera', 'tulare'
+    ]),
+    NC: new Set([
+        'sacramento', 'roseville', 'chico', 'redding', 'santarosa', 'oakland', 'sanfrancisco',
+        'sanjose', 'fremont', 'concord', 'vacaville', 'fairfield'
+    ]),
+};
+
+const parseCityStateFromAddress = (addressText) => {
+    const raw = String(addressText || '').trim();
+    if (!raw) return { city: '', state: '' };
+
+    const lines = raw
+        .split(/\r?\n/)
+        .map((line) => line.trim())
+        .filter(Boolean);
+
+    for (const line of lines) {
+        const stateMatch = line.match(/,\s*([A-Za-z]{2})\b/);
+        if (!stateMatch) continue;
+
+        const state = stateMatch[1].toUpperCase();
+        const city = line.split(',')[0]?.trim() || '';
+
+        if (city) {
+            return { city, state };
+        }
+    }
+
+    return { city: '', state: '' };
+};
+
+const getAzCityMetaFromCity = (city) => {
+    const key = normalizeCityKey(city);
+    if (!key) return null;
+    return AZ_CITY_INDEX.get(key) || null;
+};
+
+const inferRegionFromAddress = (addressText, cityObj) => {
+    const cityFromSelection = cityObj?.value || cityObj?.name || '';
+    const parsed = parseCityStateFromAddress(addressText);
+    const city = cityFromSelection || parsed.city;
+    const state = parsed.state;
+
+    const azCity = getAzCityMetaFromCity(city);
+    if (state === 'AZ' || azCity) {
+        if (!azCity) return '';
+        return 'AZ';
+    }
+
+    if (state === 'CA') {
+        const key = normalizeCityKey(city);
+
+        if (CA_CITY_REGION_LOOKUP.SC.has(key)) return 'SC';
+        if (CA_CITY_REGION_LOOKUP.CC.has(key)) return 'CC';
+        if (CA_CITY_REGION_LOOKUP.NC.has(key)) return 'NC';
+
+        return '';
+    }
+
+    return '';
+};
+
+const inferAzClassFromAddress = (addressText, cityObj) => {
+    if (cityObj?.class) return cityObj.class;
+
+    const parsed = parseCityStateFromAddress(addressText);
+    const azCity = getAzCityMetaFromCity(parsed.city);
+
+    return azCity?.class || null;
+};
+
+const getClass = (salesmanObj, cityObj, addressText) => {
     if (salesmanObj) {
+        const salesmanName = String(salesmanObj.name || '').toLowerCase();
+        if (salesmanName === 'dom' || salesmanName === 'dave') {
+            const inferredRegion = inferRegionFromAddress(addressText, cityObj);
+            if (inferredRegion === 'AZ') return inferAzClassFromAddress(addressText, cityObj);
+            if (inferredRegion) return inferredRegion;
+        }
+
         if (salesmanObj.region === 'CA') return salesmanObj.subregion;
+        if (salesmanObj.region === 'AZ') return inferAzClassFromAddress(addressText, cityObj);
         if (cityObj) return cityObj.class;
         return null;
     } else {
@@ -8,9 +104,18 @@ const getClass = (salesmanObj, cityObj) => {
     }
 };
 
-const getRegion = (salesmanObj) => {
+const getRegion = (salesmanObj, cityObj, addressText) => {
     if (salesmanObj) {
-        if (salesmanObj.region === 'AZ') return salesmanObj.region;
+        const salesmanName = String(salesmanObj.name || '').toLowerCase();
+        if (salesmanName === 'dom' || salesmanName === 'dave') {
+            const inferredRegion = inferRegionFromAddress(addressText, cityObj);
+            return inferredRegion || null;
+        }
+
+        if (salesmanObj.region === 'AZ') {
+            return inferRegionFromAddress(addressText, cityObj) || null;
+        }
+
         return salesmanObj.subregion;
     } else {
         return null;
