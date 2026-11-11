@@ -19,6 +19,8 @@ const PIPELINE_ITEM_FIELDS = [
     'Lead Source',
     'Description of Work',
     'Address',
+    'Space #',
+    'Space Number',
     'City, State & Zip',
     'Phone #',
     'PipelineItemId',

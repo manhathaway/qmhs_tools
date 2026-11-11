@@ -379,22 +379,22 @@ export default function LeadsBoard({ onLeadSelect }) {
                                     <div className={styles.actions}>
                                         <button
                                             type="button"
-                                            className={`${styles.actionButtonSecondary} ${statusClass}`}
-                                            onClick={(event) => handleContactClick(item, event)}
-                                            disabled={!item.contactId && !item.ContactId}
-                                            title={item.contactId || item.ContactId ? 'Open contact page' : 'Missing contact id'}
-                                        >
-                                            View Contact
-                                        </button>
-
-                                        <button
-                                            type="button"
                                             className={`${styles.actionButtonPrimary} ${statusClass}`}
                                             onClick={(event) => handleTransferClick(item, event)}
                                             disabled={!canTransfer || !onLeadSelect}
                                             title={canTransfer ? 'Copy data to Sale Entry' : 'Only Sale Won and Cancelled pipelines can transfer'}
                                         >
                                             Copy Data
+                                        </button>
+
+                                        <button
+                                            type="button"
+                                            className={`${styles.actionButtonSecondary} ${statusClass}`}
+                                            onClick={(event) => handleContactClick(item, event)}
+                                            disabled={!item.contactId && !item.ContactId}
+                                            title={item.contactId || item.ContactId ? 'Open contact page' : 'Missing contact id'}
+                                        >
+                                            View Contact
                                         </button>
                                     </div>
                                 </div>

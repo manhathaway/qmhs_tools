@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import Form from './Form.jsx';
 import LeadsBoard from './LeadsBoard.jsx';
-import Reports from './Reports.jsx';
 import styles from './AppNav.module.css';
 
 export default function AppNav() {
@@ -21,22 +20,16 @@ export default function AppNav() {
         <div className={styles.appContainer}>
             <div className={styles.tabBar}>
                 <button
-                    className={`${styles.tab} ${activeTab === 'saleEntry' ? styles.active : ''}`}
-                    onClick={() => setActiveTab('saleEntry')}
-                >
-                    Sale Entry
-                </button>
-                <button
                     className={`${styles.tab} ${activeTab === 'leadsBoard' ? styles.active : ''}`}
                     onClick={() => setActiveTab('leadsBoard')}
                 >
                     Leads Board
                 </button>
                 <button
-                    className={`${styles.tab} ${activeTab === 'reports' ? styles.active : ''}`}
-                    onClick={() => setActiveTab('reports')}
+                    className={`${styles.tab} ${activeTab === 'saleEntry' ? styles.active : ''}`}
+                    onClick={() => setActiveTab('saleEntry')}
                 >
-                    Reports
+                    Sale Entry
                 </button>
             </div>
 
@@ -46,9 +39,6 @@ export default function AppNav() {
                 </div>
                 <div className={`${styles.tabPanel} ${activeTab === 'leadsBoard' ? styles.visible : ''}`}>
                     <LeadsBoard onLeadSelect={handleLeadSelect} />
-                </div>
-                <div className={`${styles.tabPanel} ${activeTab === 'reports' ? styles.visible : ''}`}>
-                    <Reports />
                 </div>
             </div>
         </div>

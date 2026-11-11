@@ -112,7 +112,12 @@ const formatContactNameFirstLast = (name) => {
 };
 
 const buildAddressText = (lead) => {
-    const address = String(lead['Address'] || '').trim();
+    const streetAddress = String(lead['Address'] || '').trim();
+    const spaceNumber = String(lead['Space #'] || lead['Space Number'] || '').trim();
+    const address = [
+        streetAddress,
+        spaceNumber ? (spaceNumber.startsWith('#') ? spaceNumber : `#${spaceNumber}`) : ''
+    ].filter(Boolean).join(' ');
     const cityStateZip = String(lead['City, State & Zip'] || '').trim();
     const phone = String(lead['Phone #'] || '').trim();
 
@@ -268,15 +273,23 @@ const shouldMarkAsNewCustomer = (lead) => {
 };
 
 const mapSource = (lead) => {
-    const leadType = getLeadType(lead);
+    const leadTypeValue = getLeadType(lead);
+    const leadType = typeof leadTypeValue === 'string'
+        ? leadTypeValue
+        : leadTypeValue?.Name || leadTypeValue?.Value || leadTypeValue?.value || leadTypeValue?.name || '';
+    const normalizedLeadType = normalizeText(leadType);
     const leadSource = getLeadSource(lead);
-    const csr = (lead['Customer Service Representative'] || '').trim();
+    const csrValue = lead['Customer Service Representative'];
+    const csr = typeof csrValue === 'string'
+        ? csrValue
+        : csrValue?.Name || csrValue?.Value || csrValue?.value || csrValue?.name || '';
+    const normalizedCsr = normalizeText(csr);
     const normalizedLeadSource = normalizeText(leadSource);
 
-    if (leadType === 'Upsale') return 'Upsale';
-    if (leadType === 'Go-Back' || leadType === 'Go Back') return 'Go Back';
+    if (normalizedLeadType === 'upsale') return 'Upsale';
+    if (normalizedLeadType === 'go back') return 'Go Back';
 
-    if (leadType === 'Call In') {
+    if (normalizedLeadType === 'call in') {
         let bestCallInMatch = null;
         let bestCallInScore = 0;
 
@@ -303,9 +316,20 @@ const mapSource = (lead) => {
         return bestCallInScore >= 45 ? bestCallInMatch?.value || '' : '';
     }
 
-    if (leadType === 'Quality Check' || leadType === 'Warranty Check') {
-        const wcMatch = SOURCES.list.find(option => option.type === 'WC' && option.name === csr);
-        if (wcMatch?.value) return wcMatch.value;
+    if (normalizedLeadType === 'quality check' || normalizedLeadType === 'warranty check') {
+        const paddedCsr = ` ${normalizedCsr} `;
+        const wcMatch = SOURCES.list.find((option) => {
+            if (option.type !== 'WC') return false;
+
+            return [option.name, option.value].some((candidate) => {
+                const normalizedCandidate = normalizeText(candidate);
+                return normalizedCandidate && (
+                    normalizedCandidate === normalizedCsr ||
+                    paddedCsr.includes(` ${normalizedCandidate} `)
+                );
+            });
+        });
+        return wcMatch?.value || '';
     }
 
     let bestMatch = null;
